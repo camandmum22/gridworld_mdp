@@ -1,4 +1,4 @@
-# Reinforcement Learning Tecniques
+# Reinforcement Learning Techniques
 ## Markov Desicion Proccess (MDP)
 Use of an MDP structure and the Value Iteration Algorithm to solve the Gridworld board problem
 ## Q-Learning
