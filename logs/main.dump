@@ -1,0 +1,186 @@
+# coding=utf-8
+import math
+import numpy as np
+import board
+
+
+class Markov_DP(object):
+    def __init__(self, states, actions, transitions, reward, discount, epsilon, max_iter):
+        self.discount = discount
+        self.max_iter = max_iter
+        self.epsilon = epsilon
+        self.states = states
+        self.actions = actions
+        self.prob = tuple(transitions[a] for a in range(self.actions))
+
+        rew = np.array(reward).reshape(self.states)
+        self.reward = tuple(rew for x in range(self.actions))
+
+        self.current_iter = 0
+        self.optimal_value = None
+        self.optimal_policy = None
+
+    def update_value(self):
+        value = self.optimal_value
+        q_val = np.empty((self.actions, self.states))
+        for action in range(self.actions):
+            q_val[action] = self.reward[action] + self.discount * self.prob[action].dot(value)
+        # (policy, value)
+        return q_val.argmax(axis=0), q_val.max(axis=0)
+
+class RelativeValueIteration(Markov_DP):
+
+    def __init__(self, states, actions, transitions, reward, discount, epsilon=0.01, max_iter=1000):
+        # Initialise a relative value iteration MDP.
+        Markov_DP.__init__(self,  states=states, actions=actions, transitions=transitions, reward=reward, discount=None, epsilon=epsilon, max_iter=max_iter)
+
+        self.epsilon = epsilon
+        self.discount = 1
+
+        self.V = np.zeros(self.states)
+        self.gain = 0  # self.U[self.S]
+
+        self.average_reward = None
+
+    def run(self):
+        # Run the relative value iteration algorithm.
+        while True:
+            self.current_iter += 1
+            self.policy, Vnext = self._bellmanOperator()
+            Vnext = Vnext - self.gain
+
+            diff = Vnext - self.V
+            variation = diff.max()-diff.min()
+
+            if variation < self.epsilon:
+                self.average_reward = self.gain + (Vnext - self.V).min()
+                print('MSG_STOP_EPSILON_OPTIMAL_POLICY')
+                break
+            elif self.iter == self.max_iter:
+                self.average_reward = self.gain + (Vnext - self.V).min()
+                print('MSG_STOP_MAX_ITER')
+                break
+
+            self.V = Vnext
+            self.gain = float(self.V[self.S - 1])
+
+        self.V = tuple(self.V.tolist())
+
+        try:
+            self.policy = tuple(self.policy.tolist())
+        except AttributeError:
+            self.policy = tuple(self.policy)
+
+class Value_Iteration(Markov_DP):
+    def __init__(self, states, actions, transitions, reward, discount, epsilon, max_iter):
+        Markov_DP.__init__(self, states=states, actions=actions, transitions=transitions, reward=reward,discount=discount, epsilon=epsilon, max_iter=max_iter)
+        self.optimal_value = np.zeros(self.states)
+        self.max_iter = max_iter
+
+    def run(self):
+        # print('Id\tVariation')
+        while True:
+            self.current_iter += 1
+            old_value = self.optimal_value.copy()
+            self.optimal_policy, self.optimal_value = self.update_value()
+            diff = (self.optimal_value - old_value)
+            variation = (diff.max() - diff.min())
+            # print('%s\t%s' % (self.current_iter, variation))
+            if variation < self.epsilon:
+                print('OPTIMAL POLICY FOUND')
+                break
+            elif self.current_iter == self.max_iter:
+                print('ITERATION LIMIT')
+                break
+
+
+class Q_Learning(Markov_DP):
+    def __init__(self, states, actions, transitions, reward, discount, max_iter):
+        self.max_iter = max_iter
+        self.states = states
+        self.actions = actions
+        self.prob = tuple(transitions[action] for action in range(self.actions))
+        self.reward = reward
+        self.discount = discount
+        self.mean_diff = []
+        self.q_values = np.zeros((self.states, self.actions))
+        self.visits = np.zeros((self.states, self.actions))
+
+    def run(self, epsilon, rate_update=100):
+        diff = []
+        current_state = np.random.randint(0, self.states)
+        for x in range(self.max_iter):
+            if (x % rate_update) == 0:
+                current_state = np.random.randint(0, self.states)
+
+            random_p = np.random.random()
+            if random_p > epsilon:
+                current_action = self.q_values[current_state, :].argmax()
+            else:
+                current_action = np.random.randint(0, self.actions)
+
+            random_p = np.random.random()
+            current_p = 0
+            next_state = -1
+            while (current_p < random_p) and (next_state < (self.states - 1)):
+                next_state = next_state + 1
+                current_p = current_p + self.prob[current_action][current_state, next_state]
+            try:
+                rew = self.reward[current_action][current_state, next_state]
+            except IndexError:
+                try:
+                    rew = self.reward[current_state, current_action]
+                except IndexError:
+                    rew = self.reward[current_state]
+
+            self.visits[current_state, current_action] += 1
+            # update = learning_rate * Temporal difference
+            learning_rate = (1 / math.sqrt(x + 2)) #(1.0/self.visits[current_state,current_action])
+            update = learning_rate * (rew + self.discount * self.q_values[next_state, :].max() - self.q_values[current_state, current_action])
+            self.q_values[current_state, current_action] = self.q_values[current_state, current_action] + update
+
+            current_state = next_state
+            diff.append(np.absolute(update))
+            if len(diff) == rate_update:
+                self.mean_diff.append(np.mean(diff))
+                diff = []
+            self.optimal_value = self.q_values.max(axis=1)
+            self.optimal_policy = self.q_values.argmax(axis=1)
+
+
+def main():
+    # np.random.seed(0)
+    np.set_printoptions(suppress=True)
+    a_cases = [0.9, 0.8]
+    b_cases = [0.05, 0.1]
+    states = 17
+    actions = 4
+    discount = 0.99
+    epsilon = 0.01
+    epsilon_QL = [0.05,0.2]
+    max_iter_VI = 1000
+    max_iter_QL = 10000
+    np.set_printoptions(threshold=np.inf)
+
+    TRANSITION_0, REWARD_1 = board.gridWorld(a=a_cases[0], b=b_cases[0])
+    TRANSITION_2, REWARD_2 = board.gridWorld(a=a_cases[1], b=b_cases[1])
+    TRANSITION_1 = TRANSITION_0.swapaxes(0, 2)
+    TRANSITION_3 = TRANSITION_2.swapaxes(0, 2)
+
+    vi_1 = RelativeValueIteration(states=states, actions=actions, transitions=TRANSITION_1, reward=REWARD_1, discount=discount, epsilon=epsilon, max_iter=max_iter_VI)
+    vi_1.run()
+    vi_2 = Value_Iteration(states=states, actions=actions, transitions=TRANSITION_3, reward=REWARD_2, discount=discount, epsilon=epsilon, max_iter=max_iter_VI)
+    vi_2.run()
+    ql_1 = Q_Learning(states=states, actions=actions, transitions=TRANSITION_1, reward=REWARD_1, discount=discount, max_iter=max_iter_QL)
+    ql_1.run(epsilon=epsilon_QL[0])
+    ql_2 = Q_Learning(states=states, actions=actions, transitions=TRANSITION_1, reward=REWARD_1, discount=discount,max_iter=max_iter_QL)
+    ql_2.run(epsilon=epsilon_QL[1])
+
+    print('vi_1 %s\n%s\n%s' % (vi_1.current_iter, vi_1.optimal_value, vi_1.optimal_policy ))
+    print('vi_2 %s\n%s\n%s' % (vi_2.current_iter, vi_2.optimal_value, vi_2.optimal_policy ))
+    print('ql_1\n%s\n%s' % (ql_1.optimal_value, ql_1.optimal_policy))
+    print('ql_2\n%s\n%s' % (ql_2.optimal_value, ql_2.optimal_policy))
+    x=5
+
+if __name__ == "__main__":
+    main()

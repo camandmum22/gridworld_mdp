@@ -1,0 +1,44 @@
+Input layer of 4 nodes (corresponding to the 4 state features)
+Two hidden layers of 10 rectified linear units (fully connected)
+Output layer of 2 identity units (fully connected) that compute the Q-values of the two actions
+
+Discount factor: gamma=0.99
+epsilon-greedy with epsilon=0.05
+Use the adagradOptimizer(learingRate=0.1), AdamOptimizer(learningRate=0.1) or GradientDescentOptimizer(learningRate=0.01).  
+Maximum 1000 episodes and horizon of 500 steps per episode
+
+Use a replay buffer of size 1000 and replay a mini-batch of size 50 after each new experience
+Update the the target network after every 2 episodes.
+
+def run():
+    key = 'CartPole-v0'
+    env = gym.make(key)
+    reward_buffer = deque([], maxlen=100)
+    agent = DQN(env)
+    BATCHING = [False, True]
+    TARGET_RATES = [N_EPISODES+1,2]
+    pairs = list(itertools.product(BATCHING, TARGET_RATES))
+    for p in pairs:
+        print(p)
+        use_batch = p[0]
+        # update rate for the target network
+        target_rate = p[1]
+        for n in range(N_EPISODES):
+            reward = 0
+            s = env.reset()
+            done = False
+            agent.step_count_total = 0
+            while not done and agent.step_count_total < MAX_STEPS:
+                #env.render()
+                agent.step_count_total += 1
+                a = agent.e_greedy(s)
+                s_, r, done, _ = env.step(a)
+                agent.new_observation((s, a, s_, r, done), target_rate=target_rate, use_batch=use_batch)
+                reward += r
+                s = s_
+
+            reward_buffer.append(reward)
+            average = sum(reward_buffer) / len(reward_buffer)
+
+            print("Episode {}\tScore {}\tAverage {}\tdone {}".format(
+                (n+1), reward, average, done))
